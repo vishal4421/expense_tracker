@@ -472,12 +472,7 @@ import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged }
 import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // =====================================================================
-// ⚠️ ATTENTION: FOR GITHUB PAGES USERS ⚠️
-// To make Cloud Sync work on your live Github Pages site, 
-// you MUST replace the fake values below with your real Firebase Config.
-// 1. Go to console.firebase.google.com -> Create Project
-// 2. Add a Web App -> Copy the config object -> Paste it below
-// 3. Go to Firestore Database -> Create Database -> Start in Test Mode
+// ⚠️ FIREBASE CONFIG ⚠️
 // =====================================================================
 const getFirebaseConfig = () => {
   if (typeof __firebase_config !== 'undefined') {
@@ -507,7 +502,7 @@ let currentUserId = null;
 
 // Use a shared path so that anyone with the URL and PIN can collaborate and view it
 const DB_EXPENSES = collection(db, 'artifacts', appId, 'public', 'data', 'ghar_expenses');
-// FIXED: Added 'settings' folder to make the document path an even number of segments (6 segments total)
+// Fixed path to ensure it is 6 segments
 const DB_SETTINGS = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'ghar_budget');
 
 // ══════════════════════════════════════════════════
