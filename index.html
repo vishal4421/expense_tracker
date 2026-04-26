@@ -393,6 +393,72 @@
 <div id="toast"></div>
 
 <!-- ══════════════════════════════════════════════════
+    FAST UI / LOCK SCREEN (Runs instantly)
+══════════════════════════════════════════════════ -->
+<script>
+const CORRECT_PIN = '4421';
+let pinBuffer = '';
+
+function updateDots() {
+  for (let i = 0; i < 4; i++) {
+    document.getElementById('d'+i).classList.toggle('filled', i < pinBuffer.length);
+  }
+}
+
+function pinPress(d) {
+  if (pinBuffer.length >= 4) return;
+  pinBuffer += d;
+  updateDots();
+  if (pinBuffer.length === 4) setTimeout(pinSubmit, 150);
+}
+
+function pinClear() {
+  pinBuffer = pinBuffer.slice(0,-1);
+  updateDots();
+  document.getElementById('lock-error').textContent = '';
+}
+
+function pinSubmit() {
+  if (pinBuffer === CORRECT_PIN) {
+    sessionStorage.setItem('ghar_auth','1');
+    const ls = document.getElementById('lock-screen');
+    ls.style.transition = 'opacity .4s'; 
+    ls.style.opacity = '0';
+    setTimeout(() => {
+      ls.style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      if(document.getElementById('f-date')) document.getElementById('f-date').valueAsDate = new Date();
+      if (typeof window.renderAll === 'function') window.renderAll();
+    }, 400);
+  } else {
+    document.getElementById('lock-error').textContent = 'Incorrect PIN. Try again.';
+    const lc = document.getElementById('lock-card');
+    lc.classList.add('shake');
+    setTimeout(() => lc.classList.remove('shake'), 500);
+    pinBuffer = ''; updateDots();
+  }
+}
+
+if (sessionStorage.getItem('ghar_auth') === '1') {
+    document.getElementById('lock-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+}
+
+document.addEventListener('keydown', e => {
+  if (document.getElementById('lock-screen').style.display !== 'none') {
+    if (e.key >= '0' && e.key <= '9') pinPress(e.key);
+    else if (e.key === 'Backspace') pinClear();
+    else if (e.key === 'Enter') pinSubmit();
+  } else {
+    if (e.key === 'Escape') { 
+      if (window.closeEdit) window.closeEdit(); 
+      if (window.closeBudget) window.closeBudget(); 
+    }
+  }
+});
+</script>
+
+<!-- ══════════════════════════════════════════════════
     FIREBASE SETUP (ES MODULE FORMAT)
 ══════════════════════════════════════════════════ -->
 <script type="module">
@@ -492,7 +558,7 @@ function setupRealtimeListeners() {
       badge.textContent = '✓ Cloud Synced';
       badge.classList.remove('saving', 'error');
       
-      renderAll();
+      if (typeof window.renderAll === 'function') window.renderAll();
   }, (err) => {
       console.error("Expense sync error:", err);
       const badge = document.getElementById('save-badge');
@@ -500,65 +566,6 @@ function setupRealtimeListeners() {
       badge.classList.add('error');
   });
 }
-
-// ══════════════════════════════════════════════════
-//  LOCK / PIN UI (Visual Lock)
-// ══════════════════════════════════════════════════
-const CORRECT_PIN = '4421';
-let pinBuffer = '';
-
-if (sessionStorage.getItem('ghar_auth') === '1') {
-    unlockApp();
-}
-
-window.pinPress = function(d) {
-  if (pinBuffer.length >= 4) return;
-  pinBuffer += d;
-  updateDots();
-  if (pinBuffer.length === 4) setTimeout(window.pinSubmit, 150);
-}
-
-function updateDots() {
-  for (let i = 0; i < 4; i++) {
-    document.getElementById('d'+i).classList.toggle('filled', i < pinBuffer.length);
-  }
-}
-
-window.pinClear = function() {
-  pinBuffer = pinBuffer.slice(0,-1);
-  updateDots();
-  document.getElementById('lock-error').textContent = '';
-}
-
-window.pinSubmit = function() {
-  if (pinBuffer === CORRECT_PIN) {
-    sessionStorage.setItem('ghar_auth','1');
-    const ls = document.getElementById('lock-screen');
-    ls.style.transition = 'opacity .4s'; ls.style.opacity = '0';
-    setTimeout(unlockApp, 400);
-  } else {
-    document.getElementById('lock-error').textContent = 'Incorrect PIN. Try again.';
-    const lc = document.getElementById('lock-card');
-    lc.classList.add('shake');
-    setTimeout(() => lc.classList.remove('shake'), 500);
-    pinBuffer = ''; updateDots();
-  }
-}
-
-function unlockApp() {
-  document.getElementById('lock-screen').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
-  document.getElementById('f-date').valueAsDate = new Date();
-  renderAll();
-}
-
-document.addEventListener('keydown', e => {
-  if (document.getElementById('lock-screen').style.display === 'none') return;
-  if (e.key >= '0' && e.key <= '9') window.pinPress(e.key);
-  else if (e.key === 'Backspace') window.pinClear();
-  else if (e.key === 'Enter') window.pinSubmit();
-  else if (e.key === 'Escape') { window.closeEdit(); window.closeBudget(); }
-});
 
 // ══════════════════════════════════════════════════
 //  FIREBASE CLOUD MUTATIONS
@@ -870,7 +877,7 @@ function renderChart() {
   }).join('');
 }
 
-function renderAll() { renderStats(); window.renderList(); renderChart(); }
+window.renderAll = function() { renderStats(); window.renderList(); renderChart(); };
 
 // ══════════════════════════════════════════════════
 //  EXPORT
