@@ -43,9 +43,10 @@
   .header-inner{max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;height:64px;}
   .logo{font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:#fdf8f0;}
   .logo span{color:var(--gold);}
-  .header-actions{display:flex;gap:10px;align-items:center;}
+  .header-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
   #save-badge{font-size:11px;font-weight:600;letter-spacing:.5px;padding:5px 12px;border-radius:20px;background:rgba(90,122,92,.2);color:#7ab37c;border:1px solid rgba(90,122,92,.3);transition:all .4s;display:flex;align-items:center;gap:5px;}
   #save-badge.saving{background:rgba(201,147,58,.15);color:var(--gold-light);border-color:rgba(201,147,58,.3);}
+  #save-badge.error{background:#fde8e8;color:#e04040;border-color:#e04040;}
   .btn-sm{padding:8px 16px;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .2s;}
   .btn-outline{background:transparent;border:1px solid rgba(201,147,58,.4);color:var(--gold-light);}
   .btn-outline:hover{background:rgba(201,147,58,.1);border-color:var(--gold);}
@@ -134,7 +135,7 @@
   .export-bar-text span{color:var(--gold);}
   .export-btns{display:flex;gap:10px;}
 
-  /* EDIT MODAL */
+  /* MODALS (Shared styles) */
   .modal-overlay{position:fixed;inset:0;background:rgba(26,18,8,.65);z-index:5000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .25s;}
   .modal-overlay.open{opacity:1;pointer-events:all;}
   .modal{background:var(--card);border:1px solid var(--border);border-radius:24px;width:540px;max-width:calc(100vw - 32px);max-height:92vh;overflow-y:auto;transform:translateY(32px) scale(.97);transition:transform .3s cubic-bezier(.34,1.56,.64,1);box-shadow:0 32px 80px rgba(26,18,8,.3);}
@@ -194,6 +195,26 @@
   </div>
 </div>
 
+<!-- ══ SET BUDGET MODAL ══ -->
+<div class="modal-overlay" id="budget-modal" onclick="closeBudgetIfBg(event)">
+  <div class="modal" style="width:400px;">
+    <div class="modal-head">
+      <span class="modal-title">⚙️ Set Budget</span>
+      <button class="modal-close" onclick="closeBudget()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label>Total Shifting Budget (₹)</label>
+        <div class="amount-wrap"><span class="rupee-sym">₹</span><input type="number" id="b-amount" placeholder="e.g. 50000" min="0"/></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeBudget()">Cancel</button>
+      <button class="btn-save" onclick="saveBudget()">💾 Save Budget</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ EDIT MODAL ══ -->
 <div class="modal-overlay" id="edit-modal" onclick="closeEditIfBg(event)">
   <div class="modal" id="modal-inner">
@@ -246,8 +267,8 @@
     <div class="header-inner">
       <div class="logo">Ghar <span>Shift</span></div>
       <div class="header-actions">
-        <div id="save-badge">✓ All saved</div>
-        <button class="btn-sm btn-outline" onclick="setBudgetPrompt()">⚙ Budget</button>
+        <div id="save-badge">Connecting...</div>
+        <button class="btn-sm btn-outline" onclick="openBudgetModal()">⚙ Budget</button>
         <button class="btn-sm btn-outline" onclick="exportCSV()">↓ CSV</button>
         <button class="btn-sm btn-gold" onclick="exportPrint()">🖨 Print</button>
       </div>
@@ -371,31 +392,145 @@
 
 <div id="toast"></div>
 
-<script>
+<!-- ══════════════════════════════════════════════════
+    FIREBASE SETUP (ES MODULE FORMAT)
+══════════════════════════════════════════════════ -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+// =====================================================================
+// ⚠️ ATTENTION: FOR GITHUB PAGES USERS ⚠️
+// To make Cloud Sync work on your live Github Pages site, 
+// you MUST replace the fake values below with your real Firebase Config.
+// 1. Go to console.firebase.google.com -> Create Project
+// 2. Add a Web App -> Copy the config object -> Paste it below
+// 3. Go to Firestore Database -> Create Database -> Start in Test Mode
+// =====================================================================
+const getFirebaseConfig = () => {
+  if (typeof __firebase_config !== 'undefined') {
+    return JSON.parse(__firebase_config); // Uses Canvas injected config when running here
+  }
+  return {
+    apiKey: "AIzaSyBkS570CDK8htP0RfhBOI61O59HE1o26-4",
+    authDomain: "gharshift-46203.firebaseapp.com",
+    projectId: "gharshift-46203",
+    storageBucket: "gharshift-46203.firebasestorage.app",
+    messagingSenderId: "842142511833",
+    appId: "1:842142511833:web:e3bb41ff68cc2463e284c8",
+    measurementId: "G-HXQC96D6N5"
+  };
+};
+
+// Initialize Firebase
+const app = initializeApp(getFirebaseConfig());
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'ghar-shift-tracker';
+
+let expenses = [];
+let budget = 0;
+let activeFilter = 'all';
+let currentUserId = null;
+
+// Use a shared path so that anyone with the URL and PIN can collaborate and view it
+const DB_EXPENSES = collection(db, 'artifacts', appId, 'public', 'data', 'ghar_expenses');
+const DB_SETTINGS = doc(db, 'artifacts', appId, 'public', 'data', 'ghar_budget');
+
 // ══════════════════════════════════════════════════
-//  LOCK / PIN
+//  AUTHENTICATION & REALTIME SYNC
+// ══════════════════════════════════════════════════
+const initAuth = async () => {
+  try {
+    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+      await signInWithCustomToken(auth, __initial_auth_token);
+    } else {
+      await signInAnonymously(auth);
+    }
+  } catch (e) {
+    console.error("Auth failed:", e);
+    document.getElementById('save-badge').textContent = '⚠️ Auth Error';
+    document.getElementById('save-badge').classList.add('error');
+  }
+};
+
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    currentUserId = user.uid;
+    setupRealtimeListeners();
+  } else {
+    currentUserId = null;
+  }
+});
+
+// Start auth flow
+initAuth();
+
+function setupRealtimeListeners() {
+  if (!currentUserId) return;
+
+  // Listen to Budget
+  onSnapshot(DB_SETTINGS, (snap) => {
+      if (snap.exists()) {
+          budget = snap.data().amount || 0;
+      }
+      renderAll();
+  }, (err) => {
+      console.error("Budget sync error:", err);
+  });
+
+  // Listen to Expenses
+  onSnapshot(DB_EXPENSES, (snap) => {
+      expenses = [];
+      snap.forEach(docSnap => {
+          expenses.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      expenses.sort((a,b) => new Date(b.added) - new Date(a.added));
+      
+      const badge = document.getElementById('save-badge');
+      badge.textContent = '✓ Cloud Synced';
+      badge.classList.remove('saving', 'error');
+      
+      renderAll();
+  }, (err) => {
+      console.error("Expense sync error:", err);
+      const badge = document.getElementById('save-badge');
+      badge.textContent = '⚠️ Sync Error';
+      badge.classList.add('error');
+  });
+}
+
+// ══════════════════════════════════════════════════
+//  LOCK / PIN UI (Visual Lock)
 // ══════════════════════════════════════════════════
 const CORRECT_PIN = '4421';
 let pinBuffer = '';
 
-if (sessionStorage.getItem('ghar_auth') === '1') unlockApp();
+if (sessionStorage.getItem('ghar_auth') === '1') {
+    unlockApp();
+}
 
-function pinPress(d) {
+window.pinPress = function(d) {
   if (pinBuffer.length >= 4) return;
   pinBuffer += d;
   updateDots();
-  if (pinBuffer.length === 4) setTimeout(pinSubmit, 150);
+  if (pinBuffer.length === 4) setTimeout(window.pinSubmit, 150);
 }
+
 function updateDots() {
-  for (let i = 0; i < 4; i++)
+  for (let i = 0; i < 4; i++) {
     document.getElementById('d'+i).classList.toggle('filled', i < pinBuffer.length);
+  }
 }
-function pinClear() {
+
+window.pinClear = function() {
   pinBuffer = pinBuffer.slice(0,-1);
   updateDots();
   document.getElementById('lock-error').textContent = '';
 }
-function pinSubmit() {
+
+window.pinSubmit = function() {
   if (pinBuffer === CORRECT_PIN) {
     sessionStorage.setItem('ghar_auth','1');
     const ls = document.getElementById('lock-screen');
@@ -409,63 +544,148 @@ function pinSubmit() {
     pinBuffer = ''; updateDots();
   }
 }
+
 function unlockApp() {
   document.getElementById('lock-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
+  document.getElementById('f-date').valueAsDate = new Date();
   renderAll();
 }
+
 document.addEventListener('keydown', e => {
   if (document.getElementById('lock-screen').style.display === 'none') return;
-  if (e.key >= '0' && e.key <= '9') pinPress(e.key);
-  else if (e.key === 'Backspace') pinClear();
-  else if (e.key === 'Enter') pinSubmit();
+  if (e.key >= '0' && e.key <= '9') window.pinPress(e.key);
+  else if (e.key === 'Backspace') window.pinClear();
+  else if (e.key === 'Enter') window.pinSubmit();
+  else if (e.key === 'Escape') { window.closeEdit(); window.closeBudget(); }
 });
 
 // ══════════════════════════════════════════════════
-//  PERSISTENT DATA LAYER
-//  Every mutation calls save() which writes to
-//  localStorage immediately — data is never lost.
+//  FIREBASE CLOUD MUTATIONS
 // ══════════════════════════════════════════════════
-const STORAGE_KEY = 'ghar_expenses_v2';
-const BUDGET_KEY  = 'ghar_budget';
-
-let expenses = [];
-let budget   = parseFloat(localStorage.getItem(BUDGET_KEY) || '0');
-let activeFilter = 'all';
-let _saveBadgeTimer = null;
-
-// Load on start
-try {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  const parsed = raw ? JSON.parse(raw) : [];
-  expenses = Array.isArray(parsed) ? parsed : [];
-} catch(err) {
-  console.warn('Could not load saved data:', err);
-  expenses = [];
+function setSaving() {
+  const b = document.getElementById('save-badge');
+  b.textContent = '💾 Saving…';
+  b.classList.remove('error');
+  b.classList.add('saving');
 }
 
-function save() {
+window.addExpense = async function() {
+  const name   = document.getElementById('f-name').value.trim();
+  const amount = parseFloat(document.getElementById('f-amount').value);
+  if (!name) { toast('⚠️ Please enter an item name'); return; }
+  if (!amount || amount <= 0) { toast('⚠️ Please enter a valid amount'); return; }
+
+  const item = {
+    name, amount,
+    cat:    document.getElementById('f-cat').value,
+    pri:    document.getElementById('f-priority').value,
+    status: document.getElementById('f-status').value,
+    store:  document.getElementById('f-store').value.trim(),
+    date:   document.getElementById('f-date').value || new Date().toISOString().split('T')[0],
+    notes:  document.getElementById('f-notes').value.trim(),
+    added:  new Date().toISOString(),
+    edited: null,
+  };
+
+  if (!currentUserId) { toast('⚠️ Cannot save - Database not connected'); return; }
+
+  setSaving();
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
-    _flashSaved();
+    const newDocRef = doc(DB_EXPENSES); // Auto generate ID
+    await setDoc(newDocRef, item);
+    clearAddForm();
+    toast(`✅ "${name}" added`);
   } catch(err) {
-    toast('⚠️ Save failed — browser storage may be full');
+    console.error(err);
+    toast('⚠️ Error saving to cloud');
   }
 }
 
-function _flashSaved() {
-  const b = document.getElementById('save-badge');
-  if (!b) return;
-  b.textContent = '💾 Saving…';
-  b.classList.add('saving');
-  clearTimeout(_saveBadgeTimer);
-  _saveBadgeTimer = setTimeout(() => {
-    b.textContent = '✓ All saved';
-    b.classList.remove('saving');
-  }, 800);
+window.deleteExpense = async function(id, btnElement) {
+  // Safe UI confirmation pattern
+  if (btnElement.dataset.confirm !== 'true') {
+      const oldHtml = btnElement.innerHTML;
+      btnElement.innerHTML = 'Sure?';
+      btnElement.dataset.confirm = 'true';
+      btnElement.style.color = '#e04040';
+      btnElement.style.fontSize = '11px';
+      btnElement.style.fontWeight = 'bold';
+      setTimeout(() => {
+          if (document.body.contains(btnElement)) {
+              btnElement.innerHTML = oldHtml;
+              btnElement.dataset.confirm = 'false';
+              btnElement.style.color = '';
+              btnElement.style.fontSize = '';
+              btnElement.style.fontWeight = '';
+          }
+      }, 3000);
+      return;
+  }
+
+  if (!currentUserId) return;
+  setSaving();
+  try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'ghar_expenses', id));
+      toast('🗑 Expense removed');
+  } catch(err) {
+      console.error(err);
+      toast('⚠️ Error deleting');
+  }
 }
 
-// ── Constants ──
+window.saveEdit = async function() {
+  const id     = document.getElementById('e-id').value;
+  const name   = document.getElementById('e-name').value.trim();
+  const amount = parseFloat(document.getElementById('e-amount').value);
+  if (!name) { toast('⚠️ Item name required'); return; }
+  if (!amount || amount <= 0) { toast('⚠️ Enter a valid amount'); return; }
+
+  if (!currentUserId) return;
+  setSaving();
+  try {
+      const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'ghar_expenses', id);
+      await updateDoc(docRef, {
+        name, amount,
+        cat:    document.getElementById('e-cat').value,
+        pri:    document.getElementById('e-priority').value,
+        status: document.getElementById('e-status').value,
+        store:  document.getElementById('e-store').value.trim(),
+        date:   document.getElementById('e-date').value,
+        notes:  document.getElementById('e-notes').value.trim(),
+        edited: new Date().toISOString()
+      });
+      window.closeEdit();
+      toast(`✏️ "${name}" updated`);
+  } catch(err) {
+      console.error(err);
+      toast('⚠️ Error saving changes');
+  }
+}
+
+window.saveBudget = async function() {
+  const val = document.getElementById('b-amount').value;
+  const n = parseFloat(val);
+  
+  if (!isNaN(n) && n > 0) {
+      if (!currentUserId) return;
+      setSaving();
+      try {
+          await setDoc(DB_SETTINGS, { amount: n });
+          window.closeBudget();
+          toast('✅ Budget saved to cloud');
+      } catch (e) {
+          console.error(e);
+          toast('⚠️ Error saving budget');
+      }
+  } else {
+      toast('⚠️ Invalid budget amount');
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  UI HELPERS & MODALS
+// ══════════════════════════════════════════════════
 const CAT_META = {
   appliance:{icon:'🏠',color:'#e65100',bg:'#fff3e0'},
   kitchen:  {icon:'🍳',color:'#c2185b',bg:'#fce4ec'},
@@ -487,37 +707,6 @@ const BAR_COLORS = [
   'linear-gradient(180deg,#616161,#212121)',
 ];
 
-document.getElementById('f-date').valueAsDate = new Date();
-
-// ══════════════════════════════════════════════════
-//  ADD
-// ══════════════════════════════════════════════════
-function addExpense() {
-  const name   = document.getElementById('f-name').value.trim();
-  const amount = parseFloat(document.getElementById('f-amount').value);
-  if (!name)          { toast('⚠️ Please enter an item name'); return; }
-  if (!amount || amount <= 0) { toast('⚠️ Please enter a valid amount'); return; }
-
-  const item = {
-    id:     Date.now(),
-    name, amount,
-    cat:    document.getElementById('f-cat').value,
-    pri:    document.getElementById('f-priority').value,
-    status: document.getElementById('f-status').value,
-    store:  document.getElementById('f-store').value.trim(),
-    date:   document.getElementById('f-date').value || today(),
-    notes:  document.getElementById('f-notes').value.trim(),
-    added:  new Date().toISOString(),
-    edited: null,
-  };
-
-  expenses.unshift(item);
-  save();          // ← Immediate persist to localStorage
-  renderAll();
-  clearAddForm();
-  toast(`✅ "${name}" added — ₹${fmt(amount)}`);
-}
-
 function clearAddForm() {
   ['f-name','f-store','f-notes'].forEach(id => document.getElementById(id).value='');
   document.getElementById('f-amount').value='';
@@ -527,22 +716,7 @@ function clearAddForm() {
   document.getElementById('f-date').valueAsDate=new Date();
 }
 
-// ══════════════════════════════════════════════════
-//  DELETE
-// ══════════════════════════════════════════════════
-function deleteExpense(id) {
-  const item = expenses.find(e => e.id === id);
-  if (!confirm(`Delete "${item?.name}"?\nThis cannot be undone.`)) return;
-  expenses = expenses.filter(e => e.id !== id);
-  save();          // ← Immediate persist
-  renderAll();
-  toast('🗑 Expense removed');
-}
-
-// ══════════════════════════════════════════════════
-//  EDIT MODAL — open / close / save
-// ══════════════════════════════════════════════════
-function openEdit(id) {
+window.openEdit = function(id) {
   const item = expenses.find(e => e.id === id);
   if (!item) return;
   document.getElementById('e-id').value       = id;
@@ -558,55 +732,22 @@ function openEdit(id) {
   setTimeout(() => document.getElementById('e-name').focus(), 200);
 }
 
-function closeEdit() {
-  document.getElementById('edit-modal').classList.remove('open');
+window.closeEdit = function() { document.getElementById('edit-modal').classList.remove('open'); }
+window.closeEditIfBg = function(e) { if (e.target.id === 'edit-modal') window.closeEdit(); }
+
+window.openBudgetModal = function() {
+  document.getElementById('b-amount').value = budget > 0 ? budget : '';
+  document.getElementById('budget-modal').classList.add('open');
+  setTimeout(() => document.getElementById('b-amount').focus(), 200);
 }
+window.closeBudget = function() { document.getElementById('budget-modal').classList.remove('open'); }
+window.closeBudgetIfBg = function(e) { if (e.target.id === 'budget-modal') window.closeBudget(); }
 
-function closeEditIfBg(e) {
-  if (e.target === document.getElementById('edit-modal')) closeEdit();
-}
-
-function saveEdit() {
-  const id     = parseInt(document.getElementById('e-id').value);
-  const name   = document.getElementById('e-name').value.trim();
-  const amount = parseFloat(document.getElementById('e-amount').value);
-  if (!name)          { toast('⚠️ Item name required'); return; }
-  if (!amount || amount <= 0) { toast('⚠️ Enter a valid amount'); return; }
-
-  const idx = expenses.findIndex(e => e.id === id);
-  if (idx === -1) { toast('⚠️ Item not found'); return; }
-
-  // Preserve id + added, update everything else
-  expenses[idx] = {
-    ...expenses[idx],
-    name, amount,
-    cat:    document.getElementById('e-cat').value,
-    pri:    document.getElementById('e-priority').value,
-    status: document.getElementById('e-status').value,
-    store:  document.getElementById('e-store').value.trim(),
-    date:   document.getElementById('e-date').value,
-    notes:  document.getElementById('e-notes').value.trim(),
-    edited: new Date().toISOString(),  // timestamp edit
-  };
-
-  save();          // ← Immediate persist
-  renderAll();
-  closeEdit();
-  toast(`✏️ "${name}" updated — ₹${fmt(amount)}`);
-}
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeEdit();
-});
-
-// ══════════════════════════════════════════════════
-//  FILTER & SEARCH
-// ══════════════════════════════════════════════════
-function setFilter(cat, el) {
+window.setFilter = function(cat, el) {
   activeFilter = cat;
   document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
-  renderList();
+  window.renderList();
 }
 
 function getFiltered() {
@@ -621,10 +762,7 @@ function getFiltered() {
   });
 }
 
-// ══════════════════════════════════════════════════
-//  RENDER LIST
-// ══════════════════════════════════════════════════
-function renderList() {
+window.renderList = function() {
   const list     = document.getElementById('expense-list');
   const filtered = getFiltered();
 
@@ -664,8 +802,8 @@ function renderList() {
         </div>
         <div class="exp-amount">₹${fmt(e.amount)}</div>
         <div class="item-actions">
-          <button class="btn-icon btn-edit" onclick="openEdit(${e.id})" title="Edit this expense">✏️</button>
-          <button class="btn-icon btn-del"  onclick="deleteExpense(${e.id})" title="Delete">🗑</button>
+          <button class="btn-icon btn-edit" onclick="openEdit('${e.id}')" title="Edit this expense">✏️</button>
+          <button class="btn-icon btn-del"  onclick="deleteExpense('${e.id}', this)" title="Delete">🗑</button>
         </div>
       </div>`;
   }).join('');
@@ -675,9 +813,6 @@ function renderList() {
   document.getElementById('list-badge').textContent   = `${expenses.length} item${expenses.length!==1?'s':''}`;
 }
 
-// ══════════════════════════════════════════════════
-//  RENDER STATS
-// ══════════════════════════════════════════════════
 function renderStats() {
   const total = expenses.reduce((s,e)=>s+e.amount,0);
   const cats  = [...new Set(expenses.map(e=>e.cat))].length;
@@ -714,9 +849,6 @@ function renderStats() {
   }
 }
 
-// ══════════════════════════════════════════════════
-//  RENDER CHART
-// ══════════════════════════════════════════════════
 function renderChart() {
   const bycat = {};
   expenses.forEach(e => { bycat[e.cat] = (bycat[e.cat]||0)+e.amount; });
@@ -738,29 +870,12 @@ function renderChart() {
   }).join('');
 }
 
-function renderAll() { renderStats(); renderList(); renderChart(); }
-
-// ══════════════════════════════════════════════════
-//  BUDGET
-// ══════════════════════════════════════════════════
-function setBudgetPrompt() {
-  const val = prompt('Enter your total shifting budget (₹):', budget||'');
-  if (val===null) return;
-  const n = parseFloat(val);
-  if (!isNaN(n) && n>0) {
-    budget = n;
-    localStorage.setItem(BUDGET_KEY, n);
-    renderAll();
-    toast('✅ Budget set to ₹'+fmt(n));
-  } else {
-    toast('⚠️ Invalid budget amount');
-  }
-}
+function renderAll() { renderStats(); window.renderList(); renderChart(); }
 
 // ══════════════════════════════════════════════════
 //  EXPORT
 // ══════════════════════════════════════════════════
-function exportCSV() {
+window.exportCSV = function() {
   if (!expenses.length) { toast('No expenses to export'); return; }
   const hdr  = ['Name','Amount','Category','Priority','Status','Store','Date','Notes'];
   const rows = expenses.map(e=>[
@@ -778,7 +893,7 @@ function exportCSV() {
   toast('📥 CSV downloaded!');
 }
 
-function exportPrint() {
+window.exportPrint = function() {
   if (!expenses.length) { toast('No expenses to print'); return; }
   const tot  = expenses.reduce((s,e)=>s+e.amount,0);
   const rows = expenses.map(e=>`<tr>
@@ -803,7 +918,6 @@ function exportPrint() {
 // ══════════════════════════════════════════════════
 function fmt(n)  { return Number(n).toLocaleString('en-IN'); }
 function cap(s)  { return s ? s.charAt(0).toUpperCase()+s.slice(1) : ''; }
-function today() { return new Date().toISOString().split('T')[0]; }
 function esc(s)  { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function siIcon(s) { return s==='purchased'?'✅':s==='planned'?'📋':'⏳'; }
 
