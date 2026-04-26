@@ -33,7 +33,7 @@
   .pin-btn:active{transform:scale(.96);}
   .pin-btn.clear{font-size:20px;color:rgba(253,248,240,.5);}
   .pin-btn.enter{background:linear-gradient(135deg,var(--gold),var(--rust));border-color:transparent;font-size:14px;font-weight:600;color:#fff;}
-  .lock-error{color:#e06060;font-size:13px;height:18px;}
+  .lock-error{color:#e06060;font-size:13px;height:36px;line-height:1.2;margin-top:8px;}
   .shake{animation:shake .4s ease;}
   @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}}
 
@@ -507,7 +507,8 @@ let currentUserId = null;
 
 // Use a shared path so that anyone with the URL and PIN can collaborate and view it
 const DB_EXPENSES = collection(db, 'artifacts', appId, 'public', 'data', 'ghar_expenses');
-const DB_SETTINGS = doc(db, 'artifacts', appId, 'public', 'data', 'ghar_budget');
+// FIXED: Added 'settings' folder to make the document path an even number of segments (6 segments total)
+const DB_SETTINGS = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'ghar_budget');
 
 // ══════════════════════════════════════════════════
 //  AUTHENTICATION & REALTIME SYNC
