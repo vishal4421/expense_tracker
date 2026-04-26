@@ -171,7 +171,7 @@
   <div class="lock-bg"></div>
   <div class="lock-card" id="lock-card">
     <div class="lock-icon">🏠</div>
-    <div class="lock-title">Ghar Shift</div>
+    <div class="lock-title">Ghar Shift <span style="font-size:14px; color:var(--muted);">v3</span></div>
     <div class="lock-sub">EXPENSE TRACKER · ENTER PIN</div>
     <div class="pin-dots" id="pin-dots">
       <div class="pin-dot" id="d0"></div><div class="pin-dot" id="d1"></div>
@@ -396,29 +396,34 @@
     FAST UI / LOCK SCREEN (Runs instantly)
 ══════════════════════════════════════════════════ -->
 <script>
+// Catch any silent browser errors and show them on the lock screen so we can debug!
+window.onerror = function(message, source, lineno) {
+  document.getElementById('lock-error').innerHTML = `<span style="color:#ff8888;font-size:11px;">Error L${lineno}: ${message}</span>`;
+};
+
 const CORRECT_PIN = '4421';
 let pinBuffer = '';
 
-function updateDots() {
+window.updateDots = function() {
   for (let i = 0; i < 4; i++) {
     document.getElementById('d'+i).classList.toggle('filled', i < pinBuffer.length);
   }
-}
+};
 
-function pinPress(d) {
+window.pinPress = function(d) {
   if (pinBuffer.length >= 4) return;
   pinBuffer += d;
-  updateDots();
-  if (pinBuffer.length === 4) setTimeout(pinSubmit, 150);
-}
+  window.updateDots();
+  if (pinBuffer.length === 4) setTimeout(window.pinSubmit, 150);
+};
 
-function pinClear() {
+window.pinClear = function() {
   pinBuffer = pinBuffer.slice(0,-1);
-  updateDots();
+  window.updateDots();
   document.getElementById('lock-error').textContent = '';
-}
+};
 
-function pinSubmit() {
+window.pinSubmit = function() {
   if (pinBuffer === CORRECT_PIN) {
     sessionStorage.setItem('ghar_auth','1');
     const ls = document.getElementById('lock-screen');
@@ -435,9 +440,9 @@ function pinSubmit() {
     const lc = document.getElementById('lock-card');
     lc.classList.add('shake');
     setTimeout(() => lc.classList.remove('shake'), 500);
-    pinBuffer = ''; updateDots();
+    pinBuffer = ''; window.updateDots();
   }
-}
+};
 
 if (sessionStorage.getItem('ghar_auth') === '1') {
     document.getElementById('lock-screen').style.display = 'none';
@@ -446,9 +451,9 @@ if (sessionStorage.getItem('ghar_auth') === '1') {
 
 document.addEventListener('keydown', e => {
   if (document.getElementById('lock-screen').style.display !== 'none') {
-    if (e.key >= '0' && e.key <= '9') pinPress(e.key);
-    else if (e.key === 'Backspace') pinClear();
-    else if (e.key === 'Enter') pinSubmit();
+    if (e.key >= '0' && e.key <= '9') window.pinPress(e.key);
+    else if (e.key === 'Backspace') window.pinClear();
+    else if (e.key === 'Enter') window.pinSubmit();
   } else {
     if (e.key === 'Escape') { 
       if (window.closeEdit) window.closeEdit(); 
@@ -479,7 +484,7 @@ const getFirebaseConfig = () => {
     return JSON.parse(__firebase_config); // Uses Canvas injected config when running here
   }
   return {
-    apiKey: "AIzaSyBkS570CDK8htP0RfhBOI61O59HE1o26-4",
+    apiKey: "AIzaSyBkS570CDK8htP0RfhBOI61059HE1o26-4",
     authDomain: "gharshift-46203.firebaseapp.com",
     projectId: "gharshift-46203",
     storageBucket: "gharshift-46203.firebasestorage.app",
