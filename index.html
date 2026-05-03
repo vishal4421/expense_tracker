@@ -476,10 +476,10 @@ import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc
 // =====================================================================
 const getFirebaseConfig = () => {
   if (typeof __firebase_config !== 'undefined') {
-    return JSON.parse(__firebase_config); // Uses Canvas injected config when running here
+    return JSON.parse(__firebase_config); 
   }
   return {
-    apiKey: "AIzaSyBkS570CDK8htP0RfhBOI61059HE1o26-4",
+    apiKey: "AIzaSyBkS57OCDK8htP0RfhBOI61059HE1o26-4",
     authDomain: "gharshift-46203.firebaseapp.com",
     projectId: "gharshift-46203",
     storageBucket: "gharshift-46203.firebasestorage.app",
@@ -502,7 +502,6 @@ let currentUserId = null;
 
 // Use a shared path so that anyone with the URL and PIN can collaborate and view it
 const DB_EXPENSES = collection(db, 'artifacts', appId, 'public', 'data', 'ghar_expenses');
-// Fixed path to ensure it is 6 segments
 const DB_SETTINGS = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'ghar_budget');
 
 // ══════════════════════════════════════════════════
@@ -517,7 +516,9 @@ const initAuth = async () => {
     }
   } catch (e) {
     console.error("Auth failed:", e);
-    document.getElementById('save-badge').textContent = '⚠️ Auth Error';
+    // NEW: Extract exact error code to show on screen!
+    const errCode = e.code ? e.code.replace('auth/', '') : 'Error';
+    document.getElementById('save-badge').textContent = '⚠️ ' + errCode;
     document.getElementById('save-badge').classList.add('error');
   }
 };
@@ -562,8 +563,9 @@ function setupRealtimeListeners() {
       if (typeof window.renderAll === 'function') window.renderAll();
   }, (err) => {
       console.error("Expense sync error:", err);
+      const errCode = err.code ? err.code : 'Sync Error';
       const badge = document.getElementById('save-badge');
-      badge.textContent = '⚠️ Sync Error';
+      badge.textContent = '⚠️ ' + errCode;
       badge.classList.add('error');
   });
 }
